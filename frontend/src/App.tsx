@@ -1,14 +1,29 @@
 import React, { useState, useEffect } from 'react'
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, useNavigate } from 'react-router-dom'
 import { Music, Sparkles, ArrowRight, Play, Users, Zap, Headphones, Brain, Shuffle } from 'lucide-react'
+import Dashboard from './components/Dashboard'
 import './App.css'
 
 function App() {
   const [isConnected, setIsConnected] = useState(false)
 
+  useEffect(() => {
+    const checkUserStatus = async () => {
+      try {
+        const response = await fetch('/api/me', { credentials: 'include' });
+        if (response.ok) {
+          setIsConnected(true);
+        }
+      } catch (error) {
+        console.error('Error checking user status:', error);
+      }
+    };
+    checkUserStatus();
+  }, []);
+
   const handleSpotifyLogin = async () => {
     try {
-      const response = await fetch('/api/spotify/login')
+      const response = await fetch('/api/spotify/login', { credentials: 'include' })
       const data = await response.json()
       if (data.auth_url) {
         window.location.href = data.auth_url
@@ -22,15 +37,24 @@ function App() {
     <Router>
       <div className="w-full min-h-screen bg-gradient-to-br from-spotify-dark via-gray-900 to-black text-white overflow-x-hidden">
         <Routes>
-          <Route path="/" element={<HomePage onSpotifyLogin={handleSpotifyLogin} isConnected={isConnected} />} />
-          <Route path="/callback" element={<CallbackPage setIsConnected={setIsConnected} />} />
+          <Route
+            path="/"
+            element={
+              isConnected ? (
+                <Dashboard />
+              ) : (
+                <HomePage onSpotifyLogin={handleSpotifyLogin} />
+              )
+            }
+          />
+          <Route path="/callback" element={<CallbackPage />} />
         </Routes>
       </div>
     </Router>
   )
 }
 
-function HomePage({ onSpotifyLogin, isConnected }: { onSpotifyLogin: () => void, isConnected: boolean }) {
+function HomePage({ onSpotifyLogin }: { onSpotifyLogin: () => void }) {
   return (
     <div className="relative w-full">
       {/* Animated Background Particles */}
@@ -208,25 +232,19 @@ function HomePage({ onSpotifyLogin, isConnected }: { onSpotifyLogin: () => void,
   )
 }
 
-function CallbackPage({ setIsConnected }: { setIsConnected: (connected: boolean) => void }) {
+function CallbackPage() {
+  const navigate = useNavigate();
+
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search)
-    const code = urlParams.get('code')
-    
-    if (code) {
-      fetch(`/api/callback?code=${code}`)
-        .then(response => response.json())
-        .then(data => {
-          if (data.access_token) {
-            setIsConnected(true)
-            window.location.href = '/'
-          }
-        })
-        .catch(error => {
-          console.error('Error handling callback:', error)
-        })
-    }
-  }, [setIsConnected])
+    // The backend handles the redirect, so we just need to wait for it.
+    // If the page is displayed, it means the redirect is in progress.
+    // We can optionally add a timeout to handle errors.
+    const timer = setTimeout(() => {
+      navigate('/');
+    }, 5000); // 5-second timeout to prevent getting stuck
+
+    return () => clearTimeout(timer);
+  }, [navigate]);
 
   return (
     <div className="min-h-screen flex items-center justify-center">
@@ -241,7 +259,7 @@ function CallbackPage({ setIsConnected }: { setIsConnected: (connected: boolean)
         <p className="text-gray-400 text-lg">Setting up your AI-powered music experience</p>
       </div>
     </div>
-  )
+  );
 }
 
 function ParticleBackground() {

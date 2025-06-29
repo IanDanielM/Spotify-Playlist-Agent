@@ -3,9 +3,9 @@ import json
 from langchain import hub
 from langchain.agents import AgentExecutor, create_react_agent
 from langchain_openai import ChatOpenAI
-from logic.embedding_store import search_song_memory
-from tools.browser_tool import get_song_info
-from tools.genius import get_song_lyrics
+from ..logic.embedding_store import search_song_memory
+from ..tools.browser_tool import get_song_info
+from ..tools.genius import get_song_lyrics
 
 
 class DrakePlaylistAgent:

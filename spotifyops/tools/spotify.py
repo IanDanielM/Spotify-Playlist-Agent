@@ -2,6 +2,7 @@ import httpx
 from dotenv import load_dotenv
 
 from spotifyops.config.config import Config
+from spotifyops.database.models import User
 
 load_dotenv()
 
@@ -10,14 +11,30 @@ class SpotifyPlaylistOps:
     """
     A class to handle Spotify playlist operations.
     """
-    def __init__(self):
+    def __init__(self, user: User):
         self.base_url = Config.BASE_URL
-    
+        self.user = user
+
     async def get_access_token(self):
-        credentials = Config.spotify_credentials()
+        access_token, refresh_token = self.user.get_tokens()
+        
+        # Check if the token is expired, and refresh if necessary
+        async with httpx.AsyncClient() as client:
+            headers = {'Authorization': f'Bearer {access_token}'}
+            response = await client.get(f"{self.base_url}/v1/me", headers=headers)
+            if response.status_code == 401:
+                new_access_token = await self.refresh_access_token(refresh_token)
+                if new_access_token:
+                    self.user.set_tokens(new_access_token, refresh_token)
+                    return new_access_token
+                else:
+                    return None
+            return access_token
+
+    async def refresh_access_token(self, refresh_token: str):
         payload = {
             "grant_type": 'refresh_token',
-            "refresh_token": credentials[1],
+            "refresh_token": refresh_token,
         }
         async with httpx.AsyncClient() as client:
             response = await client.post(
@@ -26,33 +43,32 @@ class SpotifyPlaylistOps:
                 headers=Config.get_headers())
 
         res = response.json()
-        access_token = res.get('access_token')
-        return access_token
-    
+        return res.get('access_token')
+
     async def get_headers(self):
         access_token = await self.get_access_token()
+        if not access_token:
+            return None
         return {
             'Authorization': f'Bearer {access_token}',
             'Content-Type': 'application/json'
         }
-    
-    async def get_user_playlists(self, playlist_name):
+
+    async def get_user_playlists(self):
         headers = await self.get_headers()
+        if not headers:
+            return None
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 f"{self.base_url}/v1/me/playlists",
                 headers=headers
             )
-        for item in response.json().get('items', []):
-            name = item['name']
-            if playlist_name.lower() == name.lower():
-                return item['id']
-        print(f"Playlist '{playlist_name}' not found.")
-        return None
-                    
-    
+        return response.json()
+
     async def get_playlist_tracks(self, playlist_id):
         headers = await self.get_headers()
+        if not headers:
+            return []
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 f"{self.base_url}/v1/playlists/{playlist_id}/tracks",
@@ -68,14 +84,13 @@ class SpotifyPlaylistOps:
             artist = ', '.join([a['name'] for a in artist])
             album = res['track']['album']['name'] if 'album' in res['track'] else 'Unknown Album'
             popularity = res['track'].get('popularity', 'Unknown Popularity')
-            
 
             playlist_tracks.append({
                 'track_id': track_id,
                 'name': name,
                 'artist': artist,
                 'album_name': album,
-                'popularity': popularity    
+                'popularity': popularity
             })
         return playlist_tracks
 
@@ -86,13 +101,13 @@ class SpotifyPlaylistOps:
         :param track_ids: A list of track IDs in the desired order.
         """
         headers = await self.get_headers()
-        if not track_ids:
-            print("No track IDs provided to update the playlist.")
+        if not headers or not track_ids:
+            print("No track IDs provided or authentication failed.")
             return
 
         chunk_size = 100
         success = True
-        
+
         for i in range(0, len(track_ids), chunk_size):
             chunk = track_ids[i:i + chunk_size]
             uris_to_set = [f"spotify:track:{track_id}" for track_id in chunk]
@@ -114,7 +129,7 @@ class SpotifyPlaylistOps:
                         headers=headers,
                         json=payload
                     )
-            
+
             if response.status_code not in [200, 201]:
                 print(f"Failed to update playlist {playlist_id} chunk {i//chunk_size + 1}. Status code: {response.status_code}")
                 print(f"Response: {response.text}")
@@ -134,8 +149,8 @@ class SpotifyPlaylistOps:
         :param track_id: The ID of the track to add.
         """
         headers = await self.get_headers()
-        if not track_ids:
-            print("No track IDs provided to add to the playlist.")
+        if not headers or not track_ids:
+            print("No track IDs provided or authentication failed.")
             return False
 
         uris_to_add = [f"spotify:track:{track_id}" for track_id in track_ids]
