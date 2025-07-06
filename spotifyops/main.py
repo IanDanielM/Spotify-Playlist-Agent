@@ -27,7 +27,7 @@ async def main():
         track_id = track['track_id']
         existing_analysis = memory.get_existing_analysis(track_id)
         if existing_analysis:
-            print(f"Skipping '{track['name']}', '{track['track_id']}' analysis found in Vector Memory.")
+            print(f"Using cached analysis for '{track['name']}' (ID: {track_id})")
             all_song_analyses[track_id] = existing_analysis
             continue
         
@@ -39,9 +39,9 @@ async def main():
                 "analysis": analysis
             }
             memory.add_song_analysis(track_info=track, analysis=analysis)
-            print(f"Successfully Analyzed and Memorized: '{track['name']}'")
+            print(f"Successfully analyzed and cached: '{track['name']}'")
         else:
-            print(f"Agent returned an error for '{track['name']}': {analysis.get('raw_output')}")
+            print(f"Analysis failed for '{track['name']}': {analysis.get('raw_output', 'Unknown error')}")
 
     final_analyses_list = list(all_song_analyses.values())
     ordered_track_ids = sequence_playlist(final_analyses_list)

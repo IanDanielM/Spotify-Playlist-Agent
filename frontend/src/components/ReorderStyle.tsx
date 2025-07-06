@@ -2,7 +2,7 @@ import React from 'react';
 import { Music, Zap, Sparkles, Brain } from 'lucide-react';
 
 interface ReorderStyleProps {
-  onReorder: (style: string) => void;
+  onStyleSelected: (style: string) => void;
 }
 
 const reorderStyles = [
@@ -32,7 +32,7 @@ const reorderStyles = [
   },
 ];
 
-const ReorderStyle: React.FC<ReorderStyleProps> = ({ onReorder }) => {
+const ReorderStyle: React.FC<ReorderStyleProps> = ({ onStyleSelected }) => {
   return (
     <div className="max-w-4xl mx-auto">
       <h2 className="text-3xl font-bold text-center mb-8">Choose a Reordering Style</h2>
@@ -41,7 +41,7 @@ const ReorderStyle: React.FC<ReorderStyleProps> = ({ onReorder }) => {
           <div
             key={style.id}
             className="bg-gray-800 rounded-lg p-6 flex flex-col items-center cursor-pointer hover:bg-gray-700 transition-colors"
-            onClick={() => onReorder(style.id)}
+            onClick={() => onStyleSelected(style.id)}
           >
             <div className="mb-4">{style.icon}</div>
             <h3 className="text-xl font-semibold mb-2">{style.name}</h3>

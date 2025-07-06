@@ -2,23 +2,65 @@ import React, { useState, useEffect } from 'react'
 import { BrowserRouter as Router, Routes, Route, useNavigate } from 'react-router-dom'
 import { Music, Sparkles, ArrowRight, Play, Users, Zap, Headphones, Brain, Shuffle } from 'lucide-react'
 import Dashboard from './components/Dashboard'
+import UserSettings from './components/UserSettings'
 import './App.css'
 
 function App() {
   const [isConnected, setIsConnected] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+
+  const checkUserStatus = async () => {
+    try {
+      console.log('Checking user status...');
+      console.log('Document cookies:', document.cookie);
+      
+      const response = await fetch('/api/me', { credentials: 'include' });
+      console.log('Auth check response:', response.status, response.ok);
+      
+      if (response.ok) {
+        const userData = await response.json();
+        console.log('User authenticated:', userData);
+        if (userData && userData.user_id) {
+          setIsConnected(true);
+        } else {
+          console.log('No user data in response');
+          setIsConnected(false);
+        }
+      } else {
+        console.log('User not authenticated, status:', response.status);
+        setIsConnected(false);
+      }
+    } catch (error) {
+      console.error('Error checking user status:', error);
+      setIsConnected(false);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const checkUserStatus = async () => {
-      try {
-        const response = await fetch('/api/me', { credentials: 'include' });
-        if (response.ok) {
-          setIsConnected(true);
-        }
-      } catch (error) {
-        console.error('Error checking user status:', error);
-      }
-    };
     checkUserStatus();
+  }, []);
+
+  // Listen for navigation changes to re-check auth status
+  useEffect(() => {
+    const handleFocus = () => {
+      checkUserStatus();
+    };
+    
+    // Listen for successful authentication
+    const handleAuthSuccess = () => {
+      console.log('Authentication success event received');
+      checkUserStatus();
+    };
+    
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('auth-success', handleAuthSuccess);
+    
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('auth-success', handleAuthSuccess);
+    };
   }, []);
 
   const handleSpotifyLogin = async () => {
@@ -31,6 +73,17 @@ function App() {
     } catch (error) {
       console.error('Error initiating Spotify login:', error)
     }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="w-full min-h-screen bg-gradient-to-br from-spotify-dark via-gray-900 to-black text-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-4 border-spotify-green/20 border-t-spotify-green mx-auto mb-4"></div>
+          <p className="text-gray-400">Loading...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -48,6 +101,8 @@ function App() {
             }
           />
           <Route path="/callback" element={<CallbackPage />} />
+          <Route path="/debug" element={<DebugPage />} />
+          <Route path="/settings" element={<UserSettings />} />
         </Routes>
       </div>
     </Router>
@@ -69,12 +124,20 @@ function HomePage({ onSpotifyLogin }: { onSpotifyLogin: () => void }) {
             </div>
             <span className="text-2xl font-bold gradient-text">Playlist Reorder</span>
           </div>
-          <button
-            onClick={onSpotifyLogin}
-            className="px-6 py-3 bg-spotify-green hover:bg-spotify-light rounded-full font-semibold transition-all duration-300 hover:scale-105 pulse-glow"
-          >
-            Connect Spotify
-          </button>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={onSpotifyLogin}
+              className="px-6 py-3 bg-spotify-green hover:bg-spotify-light rounded-full font-semibold transition-all duration-300 hover:scale-105 pulse-glow"
+            >
+              Connect Spotify
+            </button>
+            <a
+              href="/debug"
+              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-full text-sm font-medium transition-all duration-300"
+            >
+              Debug
+            </a>
+          </div>
         </div>
       </nav>
 
@@ -234,16 +297,61 @@ function HomePage({ onSpotifyLogin }: { onSpotifyLogin: () => void }) {
 
 function CallbackPage() {
   const navigate = useNavigate();
+  const [status, setStatus] = useState('processing');
 
   useEffect(() => {
-    // The backend handles the redirect, so we just need to wait for it.
-    // If the page is displayed, it means the redirect is in progress.
-    // We can optionally add a timeout to handle errors.
-    const timer = setTimeout(() => {
-      navigate('/');
-    }, 5000); // 5-second timeout to prevent getting stuck
-
-    return () => clearTimeout(timer);
+    const handleCallback = async () => {
+      try {
+        // Get session token from URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const sessionToken = urlParams.get('session_token');
+        
+        console.log('Callback page loaded with session_token:', sessionToken);
+        
+        if (!sessionToken) {
+          console.error('No session token found in URL');
+          setStatus('error');
+          setTimeout(() => navigate('/'), 3000);
+          return;
+        }
+        
+        // Exchange session token for cookie
+        console.log('Exchanging session token for cookie...');
+        const response = await fetch('/api/set-session', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify({ session_token: sessionToken })
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          console.log('Session set successfully:', data);
+          setStatus('success');
+          
+          // Clear the URL parameters
+          window.history.replaceState({}, '', '/callback');
+          
+          // Dispatch auth success event
+          window.dispatchEvent(new CustomEvent('auth-success'));
+          
+          setTimeout(() => navigate('/'), 1000);
+        } else {
+          console.error('Failed to set session:', response.status);
+          setStatus('error');
+          setTimeout(() => navigate('/'), 3000);
+        }
+        
+      } catch (error) {
+        console.error('Error in callback handling:', error);
+        setStatus('error');
+        setTimeout(() => navigate('/'), 3000);
+      }
+    };
+    
+    handleCallback();
   }, [navigate]);
 
   return (
@@ -255,8 +363,104 @@ function CallbackPage() {
             <Music className="h-8 w-8 text-spotify-green animate-pulse" />
           </div>
         </div>
-        <h2 className="text-3xl font-bold text-white mb-4">Connecting to Spotify...</h2>
-        <p className="text-gray-400 text-lg">Setting up your AI-powered music experience</p>
+        {status === 'processing' && (
+          <>
+            <h2 className="text-3xl font-bold text-white mb-4">Connecting to Spotify...</h2>
+            <p className="text-gray-400 text-lg">Setting up your AI-powered music experience</p>
+          </>
+        )}
+        {status === 'success' && (
+          <>
+            <h2 className="text-3xl font-bold text-green-400 mb-4">Connected Successfully!</h2>
+            <p className="text-gray-400 text-lg">Redirecting to your dashboard...</p>
+          </>
+        )}
+        {status === 'error' && (
+          <>
+            <h2 className="text-3xl font-bold text-red-400 mb-4">Connection Failed</h2>
+            <p className="text-gray-400 text-lg">Redirecting back to login...</p>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DebugPage() {
+  const [debugInfo, setDebugInfo] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+
+  const fetchDebugInfo = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch('/api/debug/auth', { credentials: 'include' });
+      const data = await response.json();
+      setDebugInfo(data);
+    } catch (error) {
+      console.error('Error fetching debug info:', error);
+      setDebugInfo({ error: error instanceof Error ? error.message : 'Unknown error' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDebugInfo();
+  }, []);
+
+  return (
+    <div className="min-h-screen flex items-center justify-center p-8">
+      <div className="max-w-2xl w-full">
+        <h1 className="text-3xl font-bold text-white mb-8 text-center">Debug Information</h1>
+        <div className="bg-gray-800 rounded-lg p-6">
+          <div className="mb-4">
+            <h2 className="text-xl font-semibold text-white mb-2">Document Cookies</h2>
+            <pre className="bg-gray-900 p-3 rounded text-green-400 text-sm overflow-x-auto">
+              {document.cookie || 'No cookies found'}
+            </pre>
+          </div>
+          
+          {loading ? (
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-2 border-spotify-green/20 border-t-spotify-green mx-auto mb-2"></div>
+              <p className="text-gray-400">Loading debug info...</p>
+            </div>
+          ) : (
+            <div>
+              <h2 className="text-xl font-semibold text-white mb-2">Server Debug Info</h2>
+              <pre className="bg-gray-900 p-3 rounded text-green-400 text-sm overflow-x-auto">
+                {JSON.stringify(debugInfo, null, 2)}
+              </pre>
+            </div>
+          )}
+          
+          <div className="mt-6 flex gap-4 flex-wrap">
+            <button 
+              onClick={fetchDebugInfo}
+              className="px-4 py-2 bg-spotify-green text-black rounded-lg font-semibold hover:bg-spotify-green/80 transition-colors"
+            >
+              Refresh
+            </button>
+            <button 
+              onClick={() => window.location.href = '/'}
+              className="px-4 py-2 bg-gray-600 text-white rounded-lg font-semibold hover:bg-gray-500 transition-colors"
+            >
+              Back to Home
+            </button>
+            <button 
+              onClick={async () => {
+                const response = await fetch('/api/spotify/login', { credentials: 'include' });
+                const data = await response.json();
+                if (data.auth_url) {
+                  window.location.href = data.auth_url;
+                }
+              }}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-500 transition-colors"
+            >
+              Test Login
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

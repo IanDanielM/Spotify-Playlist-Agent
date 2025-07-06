@@ -16,7 +16,12 @@ class SpotifyPlaylistOps:
         self.user = user
 
     async def get_access_token(self):
-        access_token, refresh_token = self.user.get_tokens()
+        try:
+            access_token, refresh_token = self.user.get_tokens()
+        except ValueError as e:
+            # Tokens are invalid - return None to trigger re-authentication
+            print(f"Token retrieval failed: {e}")
+            return None
         
         # Check if the token is expired, and refresh if necessary
         async with httpx.AsyncClient() as client:
@@ -173,4 +178,80 @@ class SpotifyPlaylistOps:
             print(f"Response: {response.text}")
             return False
 
+    async def reorder_playlist_tracks(self, playlist_id: str, range_start: int, insert_before: int, range_length: int = 1):
+        """
+        Reorders tracks in a playlist using Spotify's range-based API.
+        More efficient for small changes.
         
+        :param playlist_id: The ID of the playlist to update
+        :param range_start: The position of the first item to be reordered
+        :param insert_before: The position where the items should be inserted
+        :param range_length: The amount of items to be reordered (defaults to 1)
+        """
+        headers = await self.get_headers()
+        if not headers:
+            print("Authentication failed.")
+            return False
+
+        payload = {
+            "range_start": range_start,
+            "insert_before": insert_before,
+            "range_length": range_length
+        }
+        
+        print(f"Moving {range_length} track(s) from position {range_start} to before position {insert_before}")
+
+        async with httpx.AsyncClient() as client:
+            response = await client.put(
+                f"{self.base_url}/v1/playlists/{playlist_id}/tracks",
+                headers=headers,
+                json=payload
+            )
+
+        if response.status_code == 200:
+            print(f"Successfully reordered tracks in playlist {playlist_id}")
+            return True
+        else:
+            print(f"Failed to reorder tracks. Status code: {response.status_code}")
+            print(f"Response: {response.text}")
+            return False
+
+    async def apply_intelligent_reorder(self, playlist_id: str, moves: list):
+        """
+        Applies a series of intelligent moves to reorder a playlist.
+        
+        :param playlist_id: The ID of the playlist to update
+        :param moves: List of PlaylistMove objects
+        """
+        print(f"Applying {len(moves)} intelligent moves to playlist {playlist_id}...")
+        
+        success_count = 0
+        for i, move in enumerate(moves):
+            print(f"Move {i+1}/{len(moves)}: {move}")
+            
+            success = await self.reorder_playlist_tracks(
+                playlist_id=playlist_id,
+                range_start=move.range_start,
+                insert_before=move.insert_before,
+                range_length=move.range_length
+            )
+            
+            if success:
+                success_count += 1
+            else:
+                print(f"Failed to apply move {i+1}, stopping reorder process")
+                return False
+        
+        print(f"Successfully applied {success_count}/{len(moves)} moves")
+        return success_count == len(moves)
+
+    async def get_current_playlist_order(self, playlist_id: str) -> list:
+        """
+        Gets the current track order of a playlist.
+        
+        :param playlist_id: The ID of the playlist
+        :return: List of track IDs in current order
+        """
+        tracks = await self.get_playlist_tracks(playlist_id)
+        return [track['track_id'] for track in tracks] if tracks else []
+

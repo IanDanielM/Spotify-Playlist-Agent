@@ -19,6 +19,7 @@ frontend/build/
 dist/
 build/
 *.db
+*.json
 
 # Environment variables
 .env
@@ -27,6 +28,7 @@ build/
 .env.test.local
 .env.production.local
 *.env
+*.key
 
 # IDE and editor files
 .vscode/

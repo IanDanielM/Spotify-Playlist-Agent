@@ -1,12 +1,13 @@
 from langchain.tools import tool
 from langchain_chroma import Chroma
 from langchain_openai import OpenAIEmbeddings
+from langchain_voyageai import VoyageAIEmbeddings
 
 CHROMA_PERSIST_DIRECTORY = "spotifyops/data/chroma_db"
 
 class VectorMemory:
     def __init__(self):
-        self.embedding_function = OpenAIEmbeddings(model="text-embedding-3-small")
+        self.embedding_function = VoyageAIEmbeddings(model="voyage-2", batch_size=16)
         self.vector_store = Chroma(
             collection_name="spotifyops_vector_memory",
             persist_directory=CHROMA_PERSIST_DIRECTORY,

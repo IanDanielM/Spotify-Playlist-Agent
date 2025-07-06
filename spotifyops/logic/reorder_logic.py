@@ -1,12 +1,44 @@
 import json
+from typing import Optional
 from langchain_openai import ChatOpenAI
 from langchain_deepseek import ChatDeepSeek
+from .hierarchical_reorder import HierarchicalPlaylistAgent
 
 
-def sequence_playlist(song_analyses: list) -> list[str]:
+def sequence_playlist(song_analyses: list, reorder_style: Optional[str] = None, user_intent: Optional[str] = None, personal_tone: Optional[str] = None) -> list[str]:
     """
+    Main playlist sequencing function with hierarchical approach as default.
+    Falls back to single-LLM approach for small playlists or if hierarchical fails.
+    """
+    if not song_analyses:
+        return []
+
+    print(f"Sequencing playlist with {len(song_analyses)} tracks...")
+    
+    # Use hierarchical approach for larger playlists or if user intent/tone provided
+    if len(song_analyses) > 15 or user_intent or personal_tone:
+        print("Using hierarchical agent approach...")
+        try:
+            agent = HierarchicalPlaylistAgent()
+            result = agent.sequence_playlist(song_analyses, reorder_style, user_intent, personal_tone)
+            if result and len(result) == len(song_analyses):
+                return result
+            else:
+                print("Hierarchical approach failed, falling back to single-LLM...")
+        except Exception as e:
+            print(f"Hierarchical approach error: {e}, falling back to single-LLM...")
+    
+    # Fallback to original single-LLM approach for smaller playlists
+    print("Using single-LLM approach...")
+    return _sequence_playlist_single_llm(song_analyses, reorder_style, user_intent, personal_tone)
+
+
+
+def _sequence_playlist_single_llm(song_analyses: list, reorder_style: Optional[str] = None, user_intent: Optional[str] = None, personal_tone: Optional[str] = None) -> list[str]:
+    """
+    Original single-LLM approach for smaller playlists or fallback.
     Takes a list of song analyses and uses an LLM to determine the best
-    narrative order.
+    narrative order based on user preferences.
     """
     if not song_analyses:
         return []
@@ -15,28 +47,66 @@ def sequence_playlist(song_analyses: list) -> list[str]:
 
     formatted_songs = []
     for item in song_analyses:
+        analysis = item["analysis"]
+        
+        # Handle different analysis structures
+        narrative_category = (
+            analysis.get("narrative_category") or 
+            analysis.get("narrative_category_basic") or
+            analysis.get("emotional_tone", "Unknown")
+        )
+        
         essential_info = {
             "track_id": item["track_info"]["track_id"],
             "name": item["track_info"]["name"],
-            "narrative_category": item["analysis"]["narrative_category"],
+            "narrative_category": narrative_category,
         }
         formatted_songs.append(essential_info)
 
     formatted_data = json.dumps(formatted_songs, indent=2)
 
-    master_prompt_template = """
-    You are an expert music curator and storyteller, tasked with arranging a playlist that tells the complete narrative arc
-    You will be given a list of songs, each with a `track_id`, name, and narrative_category
-    Your goal is to reorder these songs to create a cohesive story. A good narrative flows through these general phases:
-    1. Early Ambition & The Come-Up
-    2. First Taste of Fame & Newfound Wealth
-    3. Peak Celebrity & Its Pressures
-    4. Relationships & Heartbreak
-    5. Rivalry & Conflict
-    6. Introspection & Legacy
-
-    Please arrange the provided songs to follow this narrative arc.
-
+    # Build dynamic prompt based on user preferences
+    base_prompt = """
+    You are an expert music curator and storyteller, tasked with arranging a playlist to create the perfect listening experience.
+    You will be given a list of songs, each with a `track_id`, name, and narrative_category.
+    """
+    
+    # Add user intent if provided
+    if user_intent:
+        base_prompt += f"\n\nUSER'S GOAL: {user_intent}"
+    
+    # Add personal tone if provided
+    if personal_tone:
+        base_prompt += f"\n\nUSER'S PERSONAL STYLE: {personal_tone}"
+    
+    # Add reorder style guidance
+    style_guidance = ""
+    if reorder_style == "emotional_journey":
+        style_guidance = "\nCreate an emotional progression that takes the listener on a journey from one feeling to another."
+    elif reorder_style == "energy_flow":
+        style_guidance = "\nArrange the songs to create a dynamic energy flow - building up, maintaining momentum, and providing satisfying transitions."
+    elif reorder_style == "narrative_arc":
+        style_guidance = "\nTell a complete story through the music, following a narrative structure with beginning, development, and resolution."
+    elif reorder_style == "vibe_matching":
+        style_guidance = "\nGroup songs with similar vibes and moods together while creating smooth transitions between different mood sections."
+    
+    base_prompt += style_guidance
+    
+    # Default narrative structure if no specific intent provided
+    if not user_intent:
+        base_prompt += """
+        
+        Your goal is to reorder these songs to create a cohesive story. A good narrative flows through these general phases:
+        1. Early Ambition & The Come-Up
+        2. First Taste of Fame & Newfound Wealth
+        3. Peak Celebrity & Its Pressures
+        4. Relationships & Heartbreak
+        5. Rivalry & Conflict
+        6. Introspection & Legacy
+        """
+    
+    final_instructions = """
+    
     **CRITICAL OUTPUT INSTRUCTIONS:**
     Your final output MUST be only a single line of comma-separated string values of the `track_id`s. DO NOT use JSON. DO NOT use spaces.
     - DO NOT use indices.
@@ -54,12 +124,15 @@ def sequence_playlist(song_analyses: list) -> list[str]:
     [{song_data}]
     """
     
+    master_prompt_template = base_prompt + final_instructions
     final_prompt = master_prompt_template.format(song_data=formatted_data)
 
     content = ""
     try:
         response = llm.invoke(final_prompt)
-        content = response.content.strip()
+        # Handle different response types from LangChain
+        content = response.content if isinstance(response.content, str) else str(response.content)
+        content = content.strip()
     
         if content.startswith('```'):
             content = content.split('\n', 1)[1]
@@ -69,9 +142,31 @@ def sequence_playlist(song_analyses: list) -> list[str]:
         print(f"LLM Response: {content}")
         
         track_ids = content.strip().split(',')
-        track_ids = list(set(track_ids))
-
-        print(f"--- Returning {len(track_ids)} track IDs ---")
+        track_ids = [tid.strip() for tid in track_ids if tid.strip()]  # Remove empty strings
+        track_ids = list(dict.fromkeys(track_ids))  # Remove duplicates while preserving order
+        
+        # Validation: Check if we have all original tracks
+        original_ids = {item["track_info"]["track_id"] for item in song_analyses}
+        returned_ids = set(track_ids)
+        
+        if len(track_ids) != len(song_analyses):
+            print(f"❌ Track count mismatch! Expected: {len(song_analyses)}, Got: {len(track_ids)}")
+        
+        if original_ids != returned_ids:
+            missing = original_ids - returned_ids
+            extra = returned_ids - original_ids
+            if missing:
+                print(f"❌ Missing tracks: {missing}")
+            if extra:
+                print(f"❌ Extra tracks: {extra}")
+            
+            # Try to fix by adding missing tracks at the end
+            for missing_id in missing:
+                if missing_id not in track_ids:
+                    track_ids.append(missing_id)
+                    print(f"✅ Added missing track: {missing_id}")
+        
+        print(f"--- Returning {len(track_ids)} track IDs (original: {len(song_analyses)}) ---")
         return track_ids
         
     except json.JSONDecodeError as e:
