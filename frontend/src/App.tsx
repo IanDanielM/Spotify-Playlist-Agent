@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react'
 import { BrowserRouter as Router, Routes, Route, useNavigate } from 'react-router-dom'
-import { Music, Sparkles, ArrowRight, Play, Users, Zap, Headphones, Brain, Shuffle } from 'lucide-react'
+import { Music, Sparkles, ArrowRight, Play, Zap, Headphones, Brain, Shuffle } from 'lucide-react'
 import Dashboard from './components/Dashboard'
 import UserSettings from './components/UserSettings'
+import UserTestimonials from './components/UserTestimonials'
+import SharedPlaylist from './components/SharedPlaylist'
 import './App.css'
 
 function App() {
@@ -103,6 +105,7 @@ function App() {
           <Route path="/callback" element={<CallbackPage />} />
           <Route path="/debug" element={<DebugPage />} />
           <Route path="/settings" element={<UserSettings />} />
+          <Route path="/shared-playlist/:playlistId" element={<SharedPlaylist />} />
         </Routes>
       </div>
     </Router>
@@ -278,6 +281,12 @@ function HomePage({ onSpotifyLogin }: { onSpotifyLogin: () => void }) {
           <p className="text-xl text-gray-300 mb-12 max-w-2xl mx-auto">
             Join thousands of music lovers who have already discovered the power of AI-curated playlists
           </p>
+          
+          {/* Testimonials Section */}
+          <div className="mb-16 max-w-4xl mx-auto">
+            <UserTestimonials limit={1} showNavigation={false} autoSlide={true} />
+          </div>
+          
           <button
             onClick={onSpotifyLogin}
             className="group relative overflow-hidden bg-gradient-to-r from-spotify-green to-spotify-light px-16 py-8 text-2xl font-bold text-white shadow-2xl hover:shadow-spotify-green/25 transition-all duration-300 rounded-full hover:scale-105"

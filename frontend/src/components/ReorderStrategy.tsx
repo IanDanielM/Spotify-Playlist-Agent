@@ -3,6 +3,8 @@ import { Settings, Zap, RefreshCw, Brain } from 'lucide-react';
 
 interface ReorderStrategyProps {
   onStrategySelected: (method: string) => void;
+  onPreviewChanges?: () => void;
+  previewLoading?: boolean;
 }
 
 const reorderMethods = [
@@ -32,7 +34,11 @@ const reorderMethods = [
   },
 ];
 
-const ReorderStrategy: React.FC<ReorderStrategyProps> = ({ onStrategySelected }) => {
+const ReorderStrategy: React.FC<ReorderStrategyProps> = ({ 
+  onStrategySelected, 
+  onPreviewChanges, 
+  previewLoading = false 
+}) => {
   return (
     <div className="max-w-4xl mx-auto">
       <h2 className="text-3xl font-bold text-center mb-4">Choose Reordering Method</h2>
@@ -76,6 +82,31 @@ const ReorderStrategy: React.FC<ReorderStrategyProps> = ({ onStrategySelected })
           <li><strong>Complete Restructure:</strong> Perfect reordering, but changes the entire playlist structure</li>
         </ul>
       </div>
+
+      {onPreviewChanges && (
+        <div className="mt-6 text-center">
+          <button
+            onClick={onPreviewChanges}
+            disabled={previewLoading}
+            className="px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white rounded-lg font-medium flex items-center gap-2 mx-auto transition-colors"
+          >
+            {previewLoading ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                Generating Preview...
+              </>
+            ) : (
+              <>
+                <Settings size={20} />
+                Preview Changes First
+              </>
+            )}
+          </button>
+          <p className="text-gray-400 text-sm mt-2">
+            See before/after comparison before applying changes
+          </p>
+        </div>
+      )}
     </div>
   );
 };

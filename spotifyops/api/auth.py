@@ -6,6 +6,7 @@ import fastapi
 import httpx
 from fastapi import Request, Depends, Response
 from sqlalchemy.orm import Session
+from pydantic import BaseModel
 
 from spotifyops.config.config import Config
 from spotifyops.database.models import get_db, User, Session as DbSession
@@ -204,3 +205,84 @@ async def set_session(request: Request, response: Response, db: Session = Depend
     )
     
     return {"success": True, "user_id": session.user_id}
+
+
+@router.get('/me/profile')
+async def get_profile(request: Request, db: Session = Depends(get_db)):
+    """Get user profile information"""
+    session_id = request.cookies.get("session_id")
+    if not session_id:
+        raise fastapi.HTTPException(status_code=401, detail="Not authenticated")
+
+    session = db.query(DbSession).filter(DbSession.id == session_id).first()
+    if not session:
+        raise fastapi.HTTPException(status_code=401, detail="Invalid session")
+
+    user = session.user
+    return {
+        "id": user.id,
+        "spotify_username": user.spotify_username,
+        "email": user.email,
+        "subscription_tier": user.subscription_tier,
+        "subscription_expires_at": user.subscription_expires_at.isoformat() if user.subscription_expires_at else None,
+        "monthly_reorders_used": user.monthly_reorders_used,
+        "total_reorders": user.total_reorders,
+        "created_at": user.created_at.isoformat() if user.created_at else None,
+        "monthly_reset_date": user.monthly_reset_date.isoformat() if user.monthly_reset_date else None
+    }
+
+
+@router.get('/me/usage')
+async def get_usage(request: Request, db: Session = Depends(get_db)):
+    """Get user usage information and limits"""
+    session_id = request.cookies.get("session_id")
+    if not session_id:
+        raise fastapi.HTTPException(status_code=401, detail="Not authenticated")
+
+    session = db.query(DbSession).filter(DbSession.id == session_id).first()
+    if not session:
+        raise fastapi.HTTPException(status_code=401, detail="Invalid session")
+
+    user = session.user
+    can_reorder, message = user.can_reorder()
+    
+    return {
+        "subscription_tier": user.subscription_tier,
+        "monthly_reorders_used": user.monthly_reorders_used,
+        "total_reorders": user.total_reorders,
+        "can_reorder": can_reorder,
+        "message": message,
+        "monthly_limit": 3 if user.subscription_tier == "free" else None,
+        "is_premium": user.is_premium()
+    }
+
+
+class PlaylistTracksRequest(BaseModel):
+    playlist_id: str
+
+@router.post('/spotify/playlist-tracks')
+async def get_playlist_tracks(request: PlaylistTracksRequest, httpRequest: Request, db: Session = Depends(get_db)):
+    """Get tracks from a specific playlist"""
+    session_id = httpRequest.cookies.get("session_id")
+    if not session_id:
+        raise fastapi.HTTPException(status_code=401, detail="Not authenticated")
+
+    session = db.query(DbSession).filter(DbSession.id == session_id).first()
+    if not session:
+        raise fastapi.HTTPException(status_code=401, detail="Invalid session")
+
+    spotify = SpotifyPlaylistOps(user=session.user)
+    
+    try:
+        tracks = await spotify.get_playlist_tracks(request.playlist_id)
+        if not tracks:
+            raise fastapi.HTTPException(status_code=404, detail="Playlist not found or empty")
+        
+        return {
+            "status": "success",
+            "tracks": tracks,
+            "total_tracks": len(tracks)
+        }
+    except Exception as e:
+        print(f"Error fetching playlist tracks: {str(e)}")
+        raise fastapi.HTTPException(status_code=500, detail=f"Failed to fetch playlist tracks: {str(e)}")

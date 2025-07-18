@@ -9,7 +9,7 @@ from ..tools.browser_tool import get_song_info
 from ..tools.genius import get_song_lyrics
 
 
-class DrakePlaylistAgent:
+class PlaylistAgent:
     def __init__(self):
         self.llm = ChatDeepSeek(model="deepseek-chat", temperature=0.0)
 

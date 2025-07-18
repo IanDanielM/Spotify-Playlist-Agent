@@ -47,8 +47,21 @@ class SpotifyPlaylistOps:
                 data=payload,
                 headers=Config.get_headers())
 
-        res = response.json()
-        return res.get('access_token')
+        if response.status_code == 200:
+            res = response.json()
+            new_access_token = res.get('access_token')
+            new_refresh_token = res.get('refresh_token', refresh_token)  # Use new refresh token if provided
+            
+            # Save the new tokens
+            if new_access_token:
+                self.user.set_tokens(new_access_token, new_refresh_token)
+                # Note: In a real app, you'd also commit this to the database here
+                print("Access token refreshed successfully")
+            
+            return new_access_token
+        else:
+            print(f"Token refresh failed: {response.status_code} - {response.text}")
+            return None
 
     async def get_headers(self):
         access_token = await self.get_access_token()
@@ -79,16 +92,33 @@ class SpotifyPlaylistOps:
                 f"{self.base_url}/v1/playlists/{playlist_id}/tracks",
                 headers=headers
             )
+        
+        if response.status_code != 200:
+            print(f"Failed to get playlist tracks. Status code: {response.status_code}")
+            print(f"Response: {response.text}")
+            return []
+        
+        response_data = response.json()
+        if not response_data:
+            print("Empty response from Spotify API")
+            return []
+            
         index = 0
         playlist_tracks = []
-        for res in response.json().get('items', []):
+        for res in response_data.get('items', []):
+            if not res or not res.get('track'):
+                continue
+            track = res['track']
+            if not track or not track.get('id'):
+                continue
+                
             index += 1
-            track_id = res['track']['id']
-            name = res['track']['name']
-            artist = [names for names in res['track']['artists']]
-            artist = ', '.join([a['name'] for a in artist])
-            album = res['track']['album']['name'] if 'album' in res['track'] else 'Unknown Album'
-            popularity = res['track'].get('popularity', 'Unknown Popularity')
+            track_id = track['id']
+            name = track['name']
+            artist = [names for names in track.get('artists', [])]
+            artist = ', '.join([a.get('name', 'Unknown Artist') for a in artist if a.get('name')])
+            album = track.get('album', {}).get('name', 'Unknown Album')
+            popularity = track.get('popularity', 'Unknown Popularity')
 
             playlist_tracks.append({
                 'track_id': track_id,
@@ -254,4 +284,68 @@ class SpotifyPlaylistOps:
         """
         tracks = await self.get_playlist_tracks(playlist_id)
         return [track['track_id'] for track in tracks] if tracks else []
+
+    async def get_playlist_info(self, playlist_id):
+        """
+        Get basic playlist information (name, description, etc.)
+        """
+        headers = await self.get_headers()
+        if not headers:
+            return None
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{self.base_url}/v1/playlists/{playlist_id}",
+                headers=headers
+            )
+        
+        if response.status_code == 200:
+            playlist_data = response.json()
+            return {
+                'id': playlist_data.get('id'),
+                'name': playlist_data.get('name', 'Unknown Playlist'),
+                'description': playlist_data.get('description', ''),
+                'public': playlist_data.get('public', False),
+                'collaborative': playlist_data.get('collaborative', False),
+                'owner': playlist_data.get('owner', {}).get('display_name', 'Unknown'),
+                'tracks_total': playlist_data.get('tracks', {}).get('total', 0),
+                'snapshot_id': playlist_data.get('snapshot_id')  # Include snapshot_id
+            }
+        else:
+            print(f"Failed to get playlist info. Status code: {response.status_code}")
+            return None
+
+    async def get_current_user_profile(self):
+        """
+        Get the current user's profile information from Spotify API
+        """
+        headers = await self.get_headers()
+        if not headers:
+            return None
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{self.base_url}/v1/me",
+                headers=headers
+            )
+        
+        if response.status_code == 200:
+            return response.json()
+        else:
+            print(f"Failed to get user profile. Status code: {response.status_code}")
+            return None
+
+    async def get_playlist_info(self, playlist_id):
+        """Get playlist information including snapshot_id for reordering"""
+        headers = await self.get_headers()
+        if not headers:
+            return None
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{self.base_url}/v1/playlists/{playlist_id}",
+                headers=headers
+            )
+        if response.status_code == 200:
+            return response.json()
+        return None
 
