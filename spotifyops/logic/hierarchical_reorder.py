@@ -494,7 +494,7 @@ OUTPUT:"""
             for keyword, score in priority_keywords.items():
                 if keyword in category_lower:
                     return score
-            return 3  # Default to middle (changed from 2.5 to 3 for int return)
+            return self.DEFAULT_CATEGORY_SCORE  # Default score for unmatched categories
         
         return sorted(categories, key=category_score)
     
