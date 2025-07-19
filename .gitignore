@@ -121,5 +121,4 @@ spotify_tokens.json
 *.pkl
 *.joblib
 spotifyops/data/
-alembic.ini
 spotifyops/main.py
