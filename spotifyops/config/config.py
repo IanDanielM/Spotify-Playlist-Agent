@@ -11,10 +11,11 @@ class Config:
     AUTH_URL = "https://accounts.spotify.com/authorize"
     TOKEN_URL = "https://accounts.spotify.com/api/token"
     CLIENT_ID = getenv('SPOTIFY_CLIENT_ID')
-    CALLBACK_URL = "http://127.0.0.1:8000/callback"
+    CALLBACK_URL = "http://localhost:8000/api/callback"
+    FRONTEND_URL = getenv('FRONTEND_URL', 'http://localhost:5173')
     CLIENT_SECRET = getenv('SPOTIFY_CLIENT_SECRET')
     GENIUS_ACCESS_TOKEN = getenv('GENIUS_CLIENT_ACCESS_TOKEN')
-    SCOPE = getenv('SPOTIFY_SCOPE')
+    SCOPE = "user-read-private user-read-email playlist-modify-public playlist-modify-private playlist-read-private"
     url = "https://accounts.spotify.com/authorize"
     refresh_token = getenv('SPOTIFY_REFRESH_TOKEN')
     client_id_and_secret = getenv('SPOTIFY_CLIENT_ID') + ":" + getenv('SPOTIFY_CLIENT_SECRET')

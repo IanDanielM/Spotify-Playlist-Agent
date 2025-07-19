@@ -3,14 +3,15 @@ import json
 from langchain import hub
 from langchain.agents import AgentExecutor, create_react_agent
 from langchain_openai import ChatOpenAI
-from logic.embedding_store import search_song_memory
-from tools.browser_tool import get_song_info
-from tools.genius import get_song_lyrics
+from langchain_deepseek import ChatDeepSeek
+from ..logic.embedding_store import search_song_memory
+from ..tools.browser_tool import get_song_info
+from ..tools.genius import get_song_lyrics
 
 
-class DrakePlaylistAgent:
+class PlaylistAgent:
     def __init__(self):
-        self.llm = ChatOpenAI(model="gpt-4o", temperature=0.2)
+        self.llm = ChatDeepSeek(model="deepseek-chat", temperature=0.0)
 
         self.tools = [get_song_lyrics, get_song_info, search_song_memory]
 
@@ -64,7 +65,21 @@ class DrakePlaylistAgent:
         input_prompt = f"Analyze the song: '{song_name}' by '{artist_name}'"
         try:
             response = self.agent_executor.invoke({"input": input_prompt})
-            return json.loads(response['output'])
+            raw_output = response.get('output', '')
+            
+            # Clean up the output - remove markdown code blocks if present
+            cleaned_output = raw_output.strip()
+            if cleaned_output.startswith('```json'):
+                cleaned_output = cleaned_output[7:]
+            elif cleaned_output.startswith('```'):
+                cleaned_output = cleaned_output[3:]
+            
+            if cleaned_output.endswith('```'):
+                cleaned_output = cleaned_output[:-3]
+            
+            cleaned_output = cleaned_output.strip()
+            
+            return json.loads(cleaned_output)
         except json.JSONDecodeError:
             raw_output = response.get('output', '')
             print(f"output from LLM was: {raw_output}")
