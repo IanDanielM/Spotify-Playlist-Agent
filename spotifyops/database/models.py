@@ -55,7 +55,7 @@ class User(Base):
     spotify_profile_image = Column(String, nullable=True)
     spotify_display_name = Column(String, nullable=True)
     spotify_country = Column(String, nullable=True)
-    spotify_followers = Column(Integer, default=0)
+    spotify_followers = Column(Integer, nullable=True)
     spotify_product = Column(String, nullable=True)
     profile_updated_at = Column(DateTime, nullable=True)
     
