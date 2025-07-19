@@ -3,6 +3,7 @@ import fastapi
 from pydantic import BaseModel
 from fastapi import Depends, Request, BackgroundTasks
 from sqlalchemy.orm import Session
+from datetime import datetime
 
 from spotifyops.agent.playlist_agent import PlaylistAgent
 from spotifyops.database.models import get_db, Session as DbSession, User
@@ -83,20 +84,6 @@ async def reorder_playlist_async(request: ReorderRequest, background_tasks: Back
             # Use default name with track count
             playlist_name = f"Playlist with {len(tracks)} tracks"
         
-        # Check free tier limitations
-        user = session.user
-        if hasattr(user, 'subscription_tier') and user.subscription_tier == "free":
-            if len(tracks) > 20:
-                raise fastapi.HTTPException(
-                    status_code=403, 
-                    detail="Free tier limited to 20 songs. Upgrade to Premium for larger playlists."
-                )
-            
-            # Check monthly usage limit
-            can_reorder, message = user.can_reorder()
-            if not can_reorder:
-                raise fastapi.HTTPException(status_code=403, detail=message)
-        
     except fastapi.HTTPException:
         raise
     except Exception as e:
@@ -116,9 +103,8 @@ async def reorder_playlist_async(request: ReorderRequest, background_tasks: Back
     
     db.add(job)
     
-    # Increment user usage for free tier users
-    if session.user.subscription_tier == "free":
-        session.user.increment_usage()
+    # Always increment total reorders for statistics
+    session.user.increment_usage()
     
     db.commit()
     db.refresh(job)
@@ -242,129 +228,220 @@ async def reorder_playlist(request: ReorderRequest, httpRequest: Request, db: Se
     # 1. Get tracks from the playlist
     tracks = await spotify.get_playlist_tracks(request.playlist_id)
     original_track_ids = [track['track_id'] for track in tracks]
-
-    # 2. Analyze each track (check cache first like in main.py)
-    analyses = []
-    for track in tracks:
-        track_id = track['track_id']
-        
-        # Check if analysis already exists in vector memory
-        existing_analysis = memory.get_existing_analysis(track_id)
-        if existing_analysis:
-            print(f"Using cached analysis for '{track['name']}' (ID: {track_id})")
-            analyses.append(existing_analysis)
-            continue
-        
-        # Analyze the song if not in cache
-        print(f"Analyzing: '{track['name']}' by {track['artist']}")
-        analysis = agent.analyze_song(track['name'], track['artist'])
-        
-        if 'error' not in analysis:
-            song_analysis = {
-                "track_info": track,
-                "analysis": analysis
-            }
-            analyses.append(song_analysis)
-            # Store in vector memory for future use
-            memory.add_song_analysis(track_info=track, analysis=analysis)
-            print(f"Successfully analyzed and cached: '{track['name']}'")
-        else:
-            print(f"Analysis failed for '{track['name']}': {analysis.get('raw_output', 'Unknown error')}")
-            # Create a fallback analysis with basic information
-            fallback_analysis = {
-                "analysis_summary": f"Track: {track['name']} by {track['artist']}",
-                "narrative_category": "Unknown",
-                "emotional_tone": "Neutral"
-            }
-            analyses.append({
-                "track_info": track,
-                "analysis": fallback_analysis
-            })
-            print(f"Added fallback analysis for '{track['name']}'")
-
-    # Filter out any analyses that still have errors
-    valid_analyses = [
-        analysis for analysis in analyses 
-        if 'error' not in analysis.get('analysis', {})
-    ]
     
-    if not valid_analyses:
-        return {"status": "error", "message": "No valid song analyses available for reordering."}
-    
-    print(f"Using {len(valid_analyses)} valid analyses out of {len(analyses)} total")
-
-    # 3. Sequence the playlist with user preferences
-    new_track_order = sequence_playlist(
-        valid_analyses, 
-        request.reorder_style, 
-        request.user_intent, 
-        request.personal_tone
-    )
-
-    if not new_track_order:
-        return {"status": "error", "message": "Failed to reorder playlist."}
-
-    # 4. Determine reordering strategy
-    strategy_result = None
+    # Get playlist name for job record
+    playlist_name = "Unknown Playlist"
     try:
-        if request.reorder_method == "auto":
-            strategy_result = reorder_calculator.calculate_reorder_strategy(
-                original_track_ids, new_track_order
-            )
-            chosen_strategy = strategy_result["strategy"]
-        elif request.reorder_method == "intelligent":
-            chosen_strategy = "intelligent_moves"
-            strategy_result = reorder_calculator.calculate_reorder_strategy(
-                original_track_ids, new_track_order
-            )
-        else:
-            chosen_strategy = "full_rewrite"
+        playlist_info = await spotify.get_playlist_info(request.playlist_id)
+        if playlist_info and 'name' in playlist_info and playlist_info['name']:
+            playlist_name = playlist_info['name']
     except Exception as e:
-        print(f"Error calculating reorder strategy: {e}")
-        # Fallback to full rewrite on error
-        chosen_strategy = "full_rewrite"
-        strategy_result = {"reason": f"Strategy calculation failed: {str(e)}"}
-
-    # 5. Apply the chosen strategy
-    success = False
-    strategy_info = {"method": chosen_strategy}
+        print(f"Warning: Could not get playlist name: {e}")
+        playlist_name = f"Playlist with {len(tracks)} tracks"
     
-    if chosen_strategy == "intelligent_moves" and strategy_result:
-        # Use intelligent moves
-        moves = strategy_result.get("moves", [])
-        if moves and isinstance(moves, list):
-            success = await spotify.apply_intelligent_reorder(request.playlist_id, moves)
-            strategy_info.update({
-                "moves_applied": len(moves),
-                "similarity": strategy_result.get("similarity", 0),
-                "efficiency_gain": strategy_result.get("efficiency_gain", 0),
-                "reason": strategy_result.get("reason", "")
-            })
-        else:
-            # Fallback to full rewrite if no moves calculated
-            success = await spotify.update_playlist_track_order(request.playlist_id, new_track_order)
-            strategy_info["method"] = "full_rewrite"
-            strategy_info["reason"] = "No intelligent moves calculated, using full rewrite"
-    else:
-        # Use full rewrite
-        success = await spotify.update_playlist_track_order(request.playlist_id, new_track_order)
-        if strategy_result:
-            strategy_info.update({
-                "reason": strategy_result.get("reason", "Full rewrite chosen"),
-                "move_count": strategy_result.get("move_count", len(new_track_order))
-            })
+    # Create job record for sync mode (for history tracking)
+    job = ReorderJob(
+        user_id=session.user.id,
+        playlist_id=request.playlist_id,
+        playlist_name=playlist_name,
+        reorder_style=request.reorder_style,
+        user_intent=request.user_intent,
+        personal_tone=request.personal_tone,
+        reorder_method=request.reorder_method,
+        total_tracks=len(tracks),
+        status=JobStatus.IN_PROGRESS.value,
+        started_at=datetime.utcnow()
+    )
+    
+    db.add(job)
+    session.user.increment_usage()
+    db.commit()
+    db.refresh(job)
 
-    if success:
-        return {
-            "status": "success", 
-            "strategy": strategy_info,
-            "tracks_reordered": len(new_track_order)
-        }
-    else:
+    try:
+        # 2. Analyze each track (check cache first like in main.py)
+        analyses = []
+        for track in tracks:
+            track_id = track['track_id']
+            
+            # Check if analysis already exists in vector memory
+            existing_analysis = memory.get_existing_analysis(track_id)
+            if existing_analysis:
+                print(f"Using cached analysis for '{track['name']}' (ID: {track_id})")
+                analyses.append(existing_analysis)
+                continue
+            
+            # Analyze the song if not in cache
+            print(f"Analyzing: '{track['name']}' by {track['artist']}")
+            analysis = agent.analyze_song(track['name'], track['artist'])
+            
+            if 'error' not in analysis:
+                song_analysis = {
+                    "track_info": track,
+                    "track_info": track,
+                    "analysis": analysis
+                }
+                analyses.append(song_analysis)
+                # Store in vector memory for future use
+                memory.add_song_analysis(track_info=track, analysis=analysis)
+                print(f"Successfully analyzed and cached: '{track['name']}'")
+            else:
+                print(f"Analysis failed for '{track['name']}': {analysis.get('raw_output', 'Unknown error')}")
+                # Create a fallback analysis with basic information
+                fallback_analysis = {
+                    "analysis_summary": f"Track: {track['name']} by {track['artist']}",
+                    "narrative_category": "Unknown",
+                    "emotional_tone": "Neutral"
+                }
+                analyses.append({
+                    "track_info": track,
+                    "analysis": fallback_analysis
+                })
+                print(f"Added fallback analysis for '{track['name']}'")
+
+        # Filter out any analyses that still have errors
+        valid_analyses = [
+            analysis for analysis in analyses 
+            if 'error' not in analysis.get('analysis', {})
+        ]
+        
+        if not valid_analyses:
+            # Update job as failed - no valid analyses
+            job.status = JobStatus.FAILED.value
+            job.completed_at = datetime.utcnow()
+            job.success = False
+            job.error_message = "No valid song analyses available for reordering"
+            db.commit()
+            return {
+                "status": "error", 
+                "job_id": job.id,
+                "playlist_name": playlist_name,
+                "message": "No valid song analyses available for reordering."
+            }
+        
+        print(f"Using {len(valid_analyses)} valid analyses out of {len(analyses)} total")
+
+        # 3. Sequence the playlist with user preferences
+        new_track_order = sequence_playlist(
+            valid_analyses, 
+            request.reorder_style, 
+            request.user_intent, 
+            request.personal_tone
+        )
+
+        if not new_track_order:
+            # Update job as failed - reordering failed
+            job.status = JobStatus.FAILED.value
+            job.completed_at = datetime.utcnow()
+            job.success = False
+            job.error_message = "Failed to reorder playlist"
+            db.commit()
+            return {
+                "status": "error", 
+                "job_id": job.id,
+                "playlist_name": playlist_name,
+                "message": "Failed to reorder playlist."
+            }
+
+        # 4. Determine reordering strategy
+        strategy_result = None
+        try:
+            if request.reorder_method == "auto":
+                strategy_result = reorder_calculator.calculate_reorder_strategy(
+                    original_track_ids, new_track_order
+                )
+                chosen_strategy = strategy_result["strategy"]
+            elif request.reorder_method == "intelligent":
+                chosen_strategy = "intelligent_moves"
+                strategy_result = reorder_calculator.calculate_reorder_strategy(
+                    original_track_ids, new_track_order
+                )
+            else:
+                chosen_strategy = "full_rewrite"
+        except Exception as e:
+            print(f"Error calculating reorder strategy: {e}")
+            # Fallback to full rewrite on error
+            chosen_strategy = "full_rewrite"
+            strategy_result = {"reason": f"Strategy calculation failed: {str(e)}"}
+
+        # 5. Apply the chosen strategy
+        success = False
+        strategy_info = {"method": chosen_strategy}
+        
+        if chosen_strategy == "intelligent_moves" and strategy_result:
+            # Use intelligent moves
+            moves = strategy_result.get("moves", [])
+            if moves and isinstance(moves, list):
+                success = await spotify.apply_intelligent_reorder(request.playlist_id, moves)
+                strategy_info.update({
+                    "moves_applied": len(moves),
+                    "similarity": strategy_result.get("similarity", 0),
+                    "efficiency_gain": strategy_result.get("efficiency_gain", 0),
+                    "reason": strategy_result.get("reason", "")
+                })
+            else:
+                # Fallback to full rewrite if no moves calculated
+                success = await spotify.update_playlist_track_order(request.playlist_id, new_track_order)
+                strategy_info["method"] = "full_rewrite"
+                strategy_info["reason"] = "No intelligent moves calculated, using full rewrite"
+        else:
+            # Use full rewrite
+            success = await spotify.update_playlist_track_order(request.playlist_id, new_track_order)
+            if strategy_result:
+                strategy_info.update({
+                    "reason": strategy_result.get("reason", "Full rewrite chosen"),
+                    "move_count": strategy_result.get("move_count", len(new_track_order))
+                })
+
+        if success:
+            # Update job record as completed successfully
+            job.status = JobStatus.COMPLETED.value
+            job.completed_at = datetime.utcnow()
+            job.success = True
+            job.tracks_reordered = len(new_track_order)
+            job.strategy_info = str(strategy_info)
+            job.progress_percentage = 100
+            job.processed_tracks = len(new_track_order)
+            db.commit()
+            
+            return {
+                "status": "success", 
+                "job_id": job.id,
+                "playlist_name": playlist_name,
+                "total_tracks": len(tracks),
+                "strategy": strategy_info,
+                "tracks_reordered": len(new_track_order)
+            }
+        else:
+            # Update job record as failed
+            job.status = JobStatus.FAILED.value
+            job.completed_at = datetime.utcnow()
+            job.success = False
+            job.error_message = "Failed to apply reordering strategy"
+            job.strategy_info = str(strategy_info)
+            db.commit()
+            
+            return {
+                "status": "error", 
+                "job_id": job.id,
+                "playlist_name": playlist_name,
+                "message": "Failed to apply reordering strategy.",
+                "strategy": strategy_info
+            }
+        
+    except Exception as e:
+        # Update job as failed due to unexpected error
+        job.status = JobStatus.FAILED.value
+        job.completed_at = datetime.utcnow()
+        job.success = False
+        job.error_message = f"Unexpected error during processing: {str(e)}"
+        db.commit()
+        
         return {
             "status": "error", 
-            "message": "Failed to apply reordering strategy.",
-            "strategy": strategy_info
+            "job_id": job.id,
+            "playlist_name": playlist_name,
+            "message": f"Unexpected error occurred: {str(e)}"
         }
 
 

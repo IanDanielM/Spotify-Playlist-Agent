@@ -2,11 +2,14 @@ from sqlalchemy import create_engine, Column, String, LargeBinary, Boolean, Fore
 from sqlalchemy.orm import sessionmaker, relationship, Session
 from sqlalchemy.ext.declarative import declarative_base
 from cryptography.fernet import Fernet
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import os
 import json
 import enum
 import uuid
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Generate a key for encryption. Store it persistently.
 def get_or_create_encryption_key():
@@ -47,41 +50,25 @@ class User(Base):
     # User profile info
     spotify_username = Column(String, nullable=True)  # Spotify display name
     email = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now(timezone.utc))
     
-    # Enhanced profile features
-    spotify_profile_image = Column(String, nullable=True)  # URL to Spotify profile image
-    spotify_display_name = Column(String, nullable=True)  # Full display name from Spotify
-    spotify_country = Column(String, nullable=True)  # User's country
-    spotify_followers = Column(Integer, default=0)  # Number of followers
-    spotify_product = Column(String, nullable=True)  # "free", "premium", etc.
+    spotify_profile_image = Column(String, nullable=True)
+    spotify_display_name = Column(String, nullable=True)
+    spotify_country = Column(String, nullable=True)
+    spotify_followers = Column(Integer, default=0)
+    spotify_product = Column(String, nullable=True)
     profile_updated_at = Column(DateTime, nullable=True)
     
     # User preferences storage
-    preferred_reorder_style = Column(String, nullable=True)  # User's favorite reordering style
-    favorite_styles = Column(JSON, nullable=True)  # List of liked reordering styles
-    user_preferences = Column(JSON, nullable=True)  # Generic preferences JSON
+    preferred_reorder_style = Column(String, nullable=True)
+    favorite_styles = Column(JSON, nullable=True)
+    user_preferences = Column(JSON, nullable=True)
     
-    # Subscription management
-    subscription_tier = Column(String, default="free")  # "free", "premium", "pro"
-    subscription_expires_at = Column(DateTime, nullable=True)
-    
-    # Usage tracking for freemium
-    monthly_reorders_used = Column(Integer, default=0)
-    monthly_reset_date = Column(DateTime, default=datetime.utcnow)
+    # Usage tracking
     total_reorders = Column(Integer, default=0)
-
-
-    # Onboarding completed flag
-    onboarding_completed = Column(Boolean, default=False)
 
     # Relationship to reorder jobs
     reorder_jobs = relationship("ReorderJob", back_populates="user")
-    def has_completed_onboarding(self) -> bool:
-        return bool(self.onboarding_completed)
-
-    def set_onboarding_completed(self, completed: bool = True):
-        self.onboarding_completed = completed
 
     def set_tokens(self, access_token, refresh_token):
         self.encrypted_access_token = cipher_suite.encrypt(access_token.encode())
@@ -100,34 +87,8 @@ class User(Base):
             print(f"Token decryption failed: {e}")
             raise ValueError("Invalid tokens - re-authentication required")
     
-    def is_premium(self) -> bool:
-        """Check if user has premium subscription"""
-        if self.subscription_tier == "free":
-            return False
-        if self.subscription_expires_at and self.subscription_expires_at < datetime.utcnow():
-            return False
-        return True
-    
-    def can_reorder(self) -> tuple[bool, str]:
-        """Check if user can perform a reorder operation"""
-        if self.is_premium():
-            return True, "Premium user"
-        
-        # Check monthly limit for free users
-        now = datetime.utcnow()
-        if self.monthly_reset_date and (now - self.monthly_reset_date).days >= 30:
-            # Reset monthly counter
-            self.monthly_reorders_used = 0
-            self.monthly_reset_date = now
-        
-        if self.monthly_reorders_used >= 3:
-            return False, "Monthly reorder limit reached. Upgrade to Premium for unlimited reorders."
-        
-        return True, f"Free tier: {3 - self.monthly_reorders_used} reorders remaining this month"
-    
     def increment_usage(self):
         """Increment usage counters"""
-        self.monthly_reorders_used += 1
         self.total_reorders += 1
     
     def update_spotify_profile(self, profile_data: dict):
@@ -210,16 +171,12 @@ class User(Base):
             'spotify_country': self.spotify_country,
             'spotify_followers': self.spotify_followers,
             'spotify_product': self.spotify_product,
-            'subscription_tier': self.subscription_tier,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'profile_updated_at': self.profile_updated_at.isoformat() if self.profile_updated_at else None,
             'preferred_reorder_style': self.preferred_reorder_style,
             'favorite_styles': self.get_favorite_styles(),
             'user_preferences': self.get_user_preferences(),
             'total_reorders': self.total_reorders,
-            'monthly_reorders_used': self.monthly_reorders_used,
-            'is_premium': self.is_premium(),
-            'onboarding_completed': self.has_completed_onboarding(),
         }
     
 
@@ -322,7 +279,7 @@ class Session(Base):
     user_id = Column(String, ForeignKey('users.id'))
     user = relationship("User")
 
-DATABASE_URL = "postgresql://ian:iamiandaniel@localhost/spotifyagent"
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./spotify.db")
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

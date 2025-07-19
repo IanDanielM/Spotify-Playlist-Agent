@@ -1,13 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { User, Crown, Calendar, BarChart3, Zap, ArrowLeft, CreditCard } from 'lucide-react';
+import { User, Calendar, BarChart3, Zap, ArrowLeft } from 'lucide-react';
 
 interface UserProfile {
   id: string;
   spotify_username: string | null;
   email: string | null;
-  subscription_tier: string;
-  subscription_expires_at: string | null;
-  monthly_reorders_used: number;
   total_reorders: number;
   created_at: string;
 }
@@ -38,36 +35,6 @@ const UserProfile: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
-
-  const getTierColor = (tier: string) => {
-    switch (tier) {
-      case 'free': return 'text-gray-400';
-      case 'premium': return 'text-spotify-green';
-      case 'pro': return 'text-yellow-400';
-      default: return 'text-gray-400';
-    }
-  };
-
-  const getTierIcon = (tier: string) => {
-    switch (tier) {
-      case 'premium':
-      case 'pro':
-        return <Crown className="w-5 h-5" />;
-      default:
-        return <User className="w-5 h-5" />;
-    }
-  };
-
-  const getRemainingReorders = () => {
-    if (!profile) return 0;
-    if (profile.subscription_tier !== 'free') return 'Unlimited';
-    return Math.max(0, 3 - profile.monthly_reorders_used);
-  };
-
-  const getUsagePercentage = () => {
-    if (!profile || profile.subscription_tier !== 'free') return 0;
-    return (profile.monthly_reorders_used / 3) * 100;
   };
 
   const formatDate = (dateString: string | null) => {
@@ -151,42 +118,6 @@ const UserProfile: React.FC = () => {
           </div>
         </div>
 
-        {/* Subscription Status */}
-        <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-6">
-          <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-            {getTierIcon(profile.subscription_tier)}
-            Subscription
-          </h2>
-          
-          <div className="space-y-3">
-            <div>
-              <label className="text-sm text-gray-400">Current Plan</label>
-              <div className={`text-lg font-semibold capitalize ${getTierColor(profile.subscription_tier)}`}>
-                {profile.subscription_tier}
-                {profile.subscription_tier === 'free' && (
-                  <span className="ml-2 text-sm text-gray-500">($0/month)</span>
-                )}
-              </div>
-            </div>
-            
-            {profile.subscription_expires_at && (
-              <div>
-                <label className="text-sm text-gray-400">Expires</label>
-                <div className="text-white">{formatDate(profile.subscription_expires_at)}</div>
-              </div>
-            )}
-            
-            {profile.subscription_tier === 'free' && (
-              <div className="mt-4">
-                <button className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-spotify-green hover:bg-spotify-light rounded-lg transition-colors">
-                  <Crown className="w-4 h-4" />
-                  Upgrade to Premium
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-
         {/* Usage Statistics */}
         <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-6">
           <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
@@ -200,32 +131,12 @@ const UserProfile: React.FC = () => {
               <div className="text-2xl font-bold text-white">{profile.total_reorders}</div>
             </div>
             
-            {profile.subscription_tier === 'free' && (
-              <div>
-                <label className="text-sm text-gray-400">This Month</label>
-                <div className="text-lg text-white mb-2">
-                  {profile.monthly_reorders_used} / 3 used
-                </div>
-                <div className="w-full bg-gray-700 rounded-full h-2">
-                  <div
-                    className="bg-spotify-green h-2 rounded-full transition-all duration-300"
-                    style={{ width: `${getUsagePercentage()}%` }}
-                  ></div>
-                </div>
-                <div className="text-sm text-gray-400 mt-1">
-                  {getRemainingReorders()} reorders remaining
-                </div>
+            <div>
+              <label className="text-sm text-gray-400">Status</label>
+              <div className="text-lg text-spotify-green font-semibold">
+                Unlimited ∞
               </div>
-            )}
-            
-            {profile.subscription_tier !== 'free' && (
-              <div>
-                <label className="text-sm text-gray-400">This Month</label>
-                <div className="text-lg text-spotify-green font-semibold">
-                  Unlimited ∞
-                </div>
-              </div>
-            )}
+            </div>
           </div>
         </div>
 
@@ -252,16 +163,6 @@ const UserProfile: React.FC = () => {
               <User className="w-4 h-4" />
               Account Settings
             </a>
-            
-            {profile.subscription_tier === 'free' && (
-              <a
-                href="/upgrade"
-                className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-spotify-green hover:bg-spotify-light text-black rounded-lg transition-colors font-semibold"
-              >
-                <CreditCard className="w-4 h-4" />
-                Upgrade Account
-              </a>
-            )}
           </div>
         </div>
       </div>

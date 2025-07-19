@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import { BrowserRouter as Router, Routes, Route, useNavigate } from 'react-router-dom'
-import { Music, Sparkles, ArrowRight, Play, Zap, Headphones, Brain, Shuffle } from 'lucide-react'
+import { Music, ArrowRight, Play, Brain, Shuffle } from 'lucide-react'
 import Dashboard from './components/Dashboard'
 import UserSettings from './components/UserSettings'
-import UserTestimonials from './components/UserTestimonials'
 import SharedPlaylist from './components/SharedPlaylist'
 import './App.css'
 
@@ -103,7 +102,6 @@ function App() {
             }
           />
           <Route path="/callback" element={<CallbackPage />} />
-          <Route path="/debug" element={<DebugPage />} />
           <Route path="/settings" element={<UserSettings />} />
           <Route path="/shared-playlist/:playlistId" element={<SharedPlaylist />} />
         </Routes>
@@ -134,12 +132,6 @@ function HomePage({ onSpotifyLogin }: { onSpotifyLogin: () => void }) {
             >
               Connect Spotify
             </button>
-            <a
-              href="/debug"
-              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-full text-sm font-medium transition-all duration-300"
-            >
-              Debug
-            </a>
           </div>
         </div>
       </nav>
@@ -176,58 +168,12 @@ function HomePage({ onSpotifyLogin }: { onSpotifyLogin: () => void }) {
               <div className="absolute inset-0 bg-gradient-to-r from-spotify-light to-spotify-green opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
               <span className="relative flex items-center gap-4">
                 <Play className="h-6 w-6" />
-                Start Your Journey
+                Connect to Spotify
                 <ArrowRight className="h-6 w-6 group-hover:translate-x-2 transition-transform duration-300" />
               </span>
             </button>
-            
-            <button className="px-8 py-6 text-xl font-semibold text-white border-2 border-white/20 rounded-full hover:border-spotify-green/50 hover:bg-spotify-green/10 transition-all duration-300 flex items-center gap-3">
-              <Headphones className="h-6 w-6" />
-              Watch Demo
-            </button>
           </div>
 
-          {/* Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-4xl mx-auto">
-            <StatCard number="10M+" label="Songs Analyzed" />
-            <StatCard number="500K+" label="Playlists Transformed" />
-            <StatCard number="99.9%" label="User Satisfaction" />
-          </div>
-        </div>
-      </section>
-
-      {/* Features Section - Full Width */}
-      <section className="relative w-full py-32 bg-gradient-to-b from-transparent to-gray-900/50">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="text-center mb-20">
-            <h2 className="text-5xl md:text-6xl font-bold mb-6 gradient-text">
-              Revolutionary AI Technology
-            </h2>
-            <p className="text-xl text-gray-300 max-w-3xl mx-auto">
-              Our advanced neural networks analyze every aspect of your music to create the perfect listening experience
-            </p>
-          </div>
-          
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <FeatureCard
-              icon={<Brain className="h-12 w-12 text-spotify-green" />}
-              title="Deep Learning Analysis"
-              description="Advanced AI analyzes lyrics, tempo, key, mood, and emotional content to understand each song's essence."
-              gradient="from-purple-500/20 to-spotify-green/20"
-            />
-            <FeatureCard
-              icon={<Zap className="h-12 w-12 text-yellow-400" />}
-              title="Energy Flow Optimization"
-              description="Creates perfect energy transitions for workouts, parties, or relaxation with scientific precision."
-              gradient="from-yellow-500/20 to-orange-500/20"
-            />
-            <FeatureCard
-              icon={<Sparkles className="h-12 w-12 text-pink-400" />}
-              title="Emotional Journey Crafting"
-              description="Builds compelling emotional narratives that take listeners on unforgettable musical adventures."
-              gradient="from-pink-500/20 to-purple-500/20"
-            />
-          </div>
         </div>
       </section>
 
@@ -281,11 +227,6 @@ function HomePage({ onSpotifyLogin }: { onSpotifyLogin: () => void }) {
           <p className="text-xl text-gray-300 mb-12 max-w-2xl mx-auto">
             Join thousands of music lovers who have already discovered the power of AI-curated playlists
           </p>
-          
-          {/* Testimonials Section */}
-          <div className="mb-16 max-w-4xl mx-auto">
-            <UserTestimonials limit={1} showNavigation={false} autoSlide={true} />
-          </div>
           
           <button
             onClick={onSpotifyLogin}
@@ -395,86 +336,6 @@ function CallbackPage() {
   );
 }
 
-function DebugPage() {
-  const [debugInfo, setDebugInfo] = useState<any>(null);
-  const [loading, setLoading] = useState(false);
-
-  const fetchDebugInfo = async () => {
-    setLoading(true);
-    try {
-      const response = await fetch('/api/debug/auth', { credentials: 'include' });
-      const data = await response.json();
-      setDebugInfo(data);
-    } catch (error) {
-      console.error('Error fetching debug info:', error);
-      setDebugInfo({ error: error instanceof Error ? error.message : 'Unknown error' });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchDebugInfo();
-  }, []);
-
-  return (
-    <div className="min-h-screen flex items-center justify-center p-8">
-      <div className="max-w-2xl w-full">
-        <h1 className="text-3xl font-bold text-white mb-8 text-center">Debug Information</h1>
-        <div className="bg-gray-800 rounded-lg p-6">
-          <div className="mb-4">
-            <h2 className="text-xl font-semibold text-white mb-2">Document Cookies</h2>
-            <pre className="bg-gray-900 p-3 rounded text-green-400 text-sm overflow-x-auto">
-              {document.cookie || 'No cookies found'}
-            </pre>
-          </div>
-          
-          {loading ? (
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-2 border-spotify-green/20 border-t-spotify-green mx-auto mb-2"></div>
-              <p className="text-gray-400">Loading debug info...</p>
-            </div>
-          ) : (
-            <div>
-              <h2 className="text-xl font-semibold text-white mb-2">Server Debug Info</h2>
-              <pre className="bg-gray-900 p-3 rounded text-green-400 text-sm overflow-x-auto">
-                {JSON.stringify(debugInfo, null, 2)}
-              </pre>
-            </div>
-          )}
-          
-          <div className="mt-6 flex gap-4 flex-wrap">
-            <button 
-              onClick={fetchDebugInfo}
-              className="px-4 py-2 bg-spotify-green text-black rounded-lg font-semibold hover:bg-spotify-green/80 transition-colors"
-            >
-              Refresh
-            </button>
-            <button 
-              onClick={() => window.location.href = '/'}
-              className="px-4 py-2 bg-gray-600 text-white rounded-lg font-semibold hover:bg-gray-500 transition-colors"
-            >
-              Back to Home
-            </button>
-            <button 
-              onClick={async () => {
-                const response = await fetch('/api/spotify/login', { credentials: 'include' });
-                const data = await response.json();
-                if (data.auth_url) {
-                  window.location.href = data.auth_url;
-                }
-              }}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-500 transition-colors"
-            >
-              Test Login
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function ParticleBackground() {
   const [particles, setParticles] = useState<Array<{id: number, left: number, delay: number}>>([])
 
@@ -499,35 +360,6 @@ function ParticleBackground() {
           }}
         />
       ))}
-    </div>
-  )
-}
-
-function StatCard({ number, label }: { number: string, label: string }) {
-  return (
-    <div className="text-center p-6 rounded-2xl glass hover-lift">
-      <div className="text-4xl md:text-5xl font-black text-spotify-green mb-2">{number}</div>
-      <div className="text-gray-300 font-semibold">{label}</div>
-    </div>
-  )
-}
-
-function FeatureCard({ icon, title, description, gradient }: { 
-  icon: React.ReactNode, 
-  title: string, 
-  description: string,
-  gradient: string 
-}) {
-  return (
-    <div className="group relative hover-lift">
-      <div className={`absolute inset-0 bg-gradient-to-br ${gradient} rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500`}></div>
-      <div className="relative p-8 rounded-3xl border border-gray-800 glass backdrop-blur-xl hover:border-spotify-green/30 transition-all duration-500">
-        <div className="flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-spotify-green/20 to-spotify-light/20 border border-spotify-green/30 mb-6 mx-auto group-hover:scale-110 transition-transform duration-300">
-          {icon}
-        </div>
-        <h3 className="text-2xl font-bold text-white mb-4 text-center">{title}</h3>
-        <p className="text-gray-300 leading-relaxed text-center">{description}</p>
-      </div>
     </div>
   )
 }

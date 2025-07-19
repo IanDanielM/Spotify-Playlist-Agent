@@ -66,7 +66,6 @@ class ReorderJobProcessor:
                 job.processed_tracks = 0
                 job.progress_percentage = 10
 
-                # If playlist name is missing or 'Unknown Playlist', try to fetch it
                 if not job.playlist_name or job.playlist_name == "Unknown Playlist":
                     try:
                         playlist_info = await spotify.get_playlist_info(job.playlist_id)
@@ -201,17 +200,14 @@ class ReorderJobProcessor:
                         "analysis": fallback_analysis
                     })
             
-            # Update progress (analysis is 10% to 60% of total progress)
             progress = 10 + int((i + 1) / total_tracks * 50)
             job.processed_tracks = i + 1
             job.progress_percentage = progress
             
-            # Commit progress in batches to reduce database load
             if (i + 1) % batch_size == 0 or i == total_tracks - 1:
                 try:
                     db.commit()
-                    # Add small delay to prevent overwhelming the system
-                    if i < total_tracks - 1:  # Don't delay on the last track
+                    if i < total_tracks - 1:
                         import asyncio
                         await asyncio.sleep(0.1)  # 100ms delay between batches
                 except Exception as e:
@@ -283,18 +279,14 @@ class ReorderJobProcessor:
         elif isinstance(obj, list):
             return [self._make_json_serializable(item) for item in obj]
         elif hasattr(obj, '__dict__'):
-            # Convert objects with __dict__ to dictionaries
             return {k: self._make_json_serializable(v) for k, v in obj.__dict__.items()}
         elif hasattr(obj, '_asdict'):
-            # Convert namedtuples to dictionaries
             return self._make_json_serializable(obj._asdict())
         else:
-            # For basic types (str, int, float, bool, None), return as-is
             try:
-                json.dumps(obj)  # Test if it's JSON serializable
+                json.dumps(obj)
                 return obj
             except (TypeError, ValueError):
-                # If not serializable, convert to string
                 return str(obj)
 
 
@@ -306,7 +298,6 @@ async def process_reorder_job_background(job_id: str):
     """Background task wrapper for job processing"""
     print(f"Background task starting for job {job_id}")
     
-    # Create a new database session for this background task
     db = next(get_db())
     
     try:
@@ -317,7 +308,6 @@ async def process_reorder_job_background(job_id: str):
         import traceback
         traceback.print_exc()
         
-        # Try to mark job as failed if possible
         try:
             job = db.query(ReorderJob).filter(ReorderJob.id == job_id).first()
             if job:
@@ -330,7 +320,6 @@ async def process_reorder_job_background(job_id: str):
         except Exception as inner_e:
             print(f"Failed to mark job {job_id} as failed: {str(inner_e)}")
     finally:
-        # Always close the database connection
         try:
             db.close()
         except Exception as e:

@@ -1,11 +1,13 @@
-from typing import Optional, Dict, Any
+from datetime import datetime
+from typing import Any, Dict, Optional
+
 import fastapi
 from fastapi import Depends, Request
-from sqlalchemy.orm import Session
-from datetime import datetime
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
-from spotifyops.database.models import get_db, Session as DbSession, User
+from spotifyops.database.models import Session as DbSession
+from spotifyops.database.models import User, get_db
 from spotifyops.services.profile_service_simple import ProfileService
 
 router = fastapi.APIRouter()
@@ -14,10 +16,6 @@ router = fastapi.APIRouter()
 class ProfileUpdateRequest(BaseModel):
     spotify_username: Optional[str] = None
     email: Optional[str] = None
-    preferred_reorder_style: Optional[str] = None
-
-class PreferencesUpdateRequest(BaseModel):
-    preferences: Dict[str, Any]
 
 class StyleRequest(BaseModel):
     style: str
@@ -41,17 +39,13 @@ async def get_user_profile(httpRequest: Request, db: Session = Depends(get_db)):
     """Get current user's comprehensive profile information, including onboarding state"""
     user = get_authenticated_user(httpRequest, db)
     profile_service = ProfileService(db)
-    # Check if monthly reset is needed
-    now = datetime.utcnow()
-    if user.monthly_reset_date and (now - user.monthly_reset_date).days >= 30:
-        user.monthly_reorders_used = 0
-        user.monthly_reset_date = now
-        db.commit()
+    
     # Get comprehensive profile with analytics
     profile = profile_service.get_user_profile(str(user.id))
-    # Add onboarding_completed flag
-    profile['onboarding_completed'] = user.has_completed_onboarding()
     return profile
+
+
+@router.put("/me/profile")
 
 
 # Endpoint to get onboarding state only
@@ -81,16 +75,11 @@ async def set_onboarding_state(
 async def get_user_usage(httpRequest: Request, db: Session = Depends(get_db)):
     """Get current user's usage statistics"""
     user = get_authenticated_user(httpRequest, db)
-    can_reorder, message = user.can_reorder()
     
     return {
-        "subscription_tier": user.subscription_tier,
-        "monthly_reorders_used": user.monthly_reorders_used,
         "total_reorders": user.total_reorders,
-        "can_reorder": can_reorder,
-        "message": message,
-        "monthly_limit": 3 if user.subscription_tier == "free" else None,
-        "is_premium": user.is_premium()
+        "can_reorder": True,
+        "message": "Ready to reorder playlists"
     }
 
 @router.put("/me/profile")
@@ -106,16 +95,13 @@ async def update_user_profile(
         user.spotify_username = request.spotify_username
     if request.email is not None:
         user.email = request.email
-    if request.preferred_reorder_style is not None:
-        user.preferred_reorder_style = request.preferred_reorder_style
     
     db.commit()
     
     return {
         "message": "Profile updated successfully",
         "spotify_username": user.spotify_username,
-        "email": user.email,
-        "preferred_reorder_style": user.preferred_reorder_style
+        "email": user.email
     }
 
 # Enhanced Profile Endpoints
@@ -141,7 +127,7 @@ async def get_user_analytics(httpRequest: Request, db: Session = Depends(get_db)
     user = get_authenticated_user(httpRequest, db)
     
     # Get all user's reorder jobs for analytics
-    from spotifyops.database.job_models import ReorderJob, JobStatus
+    from spotifyops.database.job_models import JobStatus, ReorderJob
     
     jobs = db.query(ReorderJob).filter(ReorderJob.user_id == str(user.id)).all()
     
@@ -186,7 +172,7 @@ async def get_user_recommendations(httpRequest: Request, db: Session = Depends(g
     user = get_authenticated_user(httpRequest, db)
     
     # Get analytics data for recommendations
-    from spotifyops.database.job_models import ReorderJob, JobStatus
+    from spotifyops.database.job_models import JobStatus, ReorderJob
     jobs = db.query(ReorderJob).filter(ReorderJob.user_id == str(user.id)).all()
     
     successful_jobs = [job for job in jobs if job.status == JobStatus.COMPLETED.value and job.success]
@@ -241,65 +227,6 @@ async def get_user_recommendations(httpRequest: Request, db: Session = Depends(g
         )
     
     return recommendations
-
-@router.post("/me/preferred-style")
-async def set_preferred_style(
-    request: StyleRequest,
-    httpRequest: Request,
-    db: Session = Depends(get_db)
-):
-    """Set user's preferred reordering style"""
-    user = get_authenticated_user(httpRequest, db)
-    
-    # For now, we'll store this in the spotify_username field as a temp solution
-    # In a real implementation, you'd have a proper preferences table
-    
-    return {
-        "message": "Preferred style updated successfully",
-        "style": request.style
-    }
-
-@router.post("/me/favorite-styles")
-async def add_favorite_style(
-    request: StyleRequest,
-    httpRequest: Request,
-    db: Session = Depends(get_db)
-):
-    """Add a style to user's favorites"""
-    user = get_authenticated_user(httpRequest, db)
-    
-    return {
-        "message": "Added to favorites",
-        "favorite_styles": [request.style]  # Simplified for now
-    }
-
-@router.delete("/me/favorite-styles")
-async def remove_favorite_style(
-    request: StyleRequest,
-    httpRequest: Request,
-    db: Session = Depends(get_db)
-):
-    """Remove a style from user's favorites"""
-    user = get_authenticated_user(httpRequest, db)
-    
-    return {
-        "message": "Removed from favorites",
-        "favorite_styles": []  # Simplified for now
-    }
-
-@router.put("/me/preferences")
-async def update_preferences(
-    request: PreferencesUpdateRequest,
-    httpRequest: Request,
-    db: Session = Depends(get_db)
-):
-    """Update user preferences"""
-    user = get_authenticated_user(httpRequest, db)
-    
-    return {
-        "message": "Preferences updated successfully",
-        "preferences": request.preferences
-    }
 
 @router.post("/me/refresh-spotify-profile")
 async def refresh_spotify_profile(httpRequest: Request, db: Session = Depends(get_db)):

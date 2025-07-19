@@ -8,16 +8,13 @@ import ReorderStyle from './ReorderStyle';
 import ReorderStrategy from './ReorderStrategy';
 import JobHistory from './JobHistory';
 import UserProfileCard from './UserProfileCard';
-import Settings from './Settings';
 import InteractiveTutorial from './InteractiveTutorial';
-import UserOnboarding from './UserOnboarding';
 import RealTimePlaylistReorder from './RealTimePlaylistReorder';
-import BeforeAfterPreview from './BeforeAfterPreview';
 import SamplePlaylistDemo from './SamplePlaylistDemo';
 import SocialSharing from './SocialSharing';
-import { Music, Share2, ArrowLeft, Settings as SettingsIcon, History, CheckCircle, XCircle, HelpCircle, ExternalLink } from 'lucide-react';
+import { Music, Share2, ArrowLeft, History, CheckCircle, XCircle, HelpCircle, ExternalLink } from 'lucide-react';
 
-type Step = 'playlist' | 'intent' | 'tone' | 'style' | 'strategy' | 'reordering' | 'success' | 'error' | 'history' | 'settings' | 'tutorial' | 'onboarding' | 'preview' | 'manual-reorder' | 'comparison';
+type Step = 'playlist' | 'intent' | 'tone' | 'style' | 'strategy' | 'reordering' | 'success' | 'error' | 'history' | 'tutorial' | 'preview' | 'manual-reorder';
 
 interface JobStatus {
   job_id: string;
@@ -46,37 +43,14 @@ const Dashboard: React.FC = () => {
   const [useAsyncMode, setUseAsyncMode] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showTutorial, setShowTutorial] = useState<boolean>(false);
-  const [showOnboarding, setShowOnboarding] = useState<boolean>(false);
   const [previewData, setPreviewData] = useState<any>(null);
   const [previewLoading, setPreviewLoading] = useState<boolean>(false);
   const [showPreviewModal, setShowPreviewModal] = useState<boolean>(false);
   const [previewPlaylistId, setPreviewPlaylistId] = useState<string | null>(null);
   const [previewPlaylistName, setPreviewPlaylistName] = useState<string | null>(null);
-  const [comparisonData, setComparisonData] = useState<any>(null);
   const [showSampleDemo, setShowSampleDemo] = useState(false);
   const [showSocialSharing, setShowSocialSharing] = useState(false);
   const [successPlaylistData, setSuccessPlaylistData] = useState<any>(null);
-
-  // Check if user needs onboarding on first load
-  useEffect(() => {
-    const checkOnboardingState = async () => {
-      try {
-        const response = await fetch('/api/me/onboarding-state', { credentials: 'include' });
-        if (response.ok) {
-          const data = await response.json();
-          if (!data.onboarding_completed) {
-            setShowOnboarding(true);
-          }
-        }
-      } catch (error) {
-        console.error('Error checking onboarding state:', error);
-        // Fallback to showing onboarding if we can't check
-        setShowOnboarding(true);
-      }
-    };
-    
-    checkOnboardingState();
-  }, []);
 
   const handlePlaylistSelected = (playlistId: string) => {
     setSelectedPlaylist(playlistId);
@@ -296,16 +270,8 @@ const Dashboard: React.FC = () => {
     setStep('history');
   };
 
-  const handleShowSettings = () => {
-    setStep('settings');
-  };
-
   const handleShowTutorial = () => {
     setShowTutorial(true);
-  };
-
-  const handleShowOnboarding = () => {
-    setShowOnboarding(true);
   };
 
   const fetchPreviewData = async (playlistId: string) => {
@@ -334,41 +300,6 @@ const Dashboard: React.FC = () => {
     } catch (error) {
       console.error('Error fetching preview:', error);
       setErrorMessage('Error generating preview');
-    } finally {
-      setPreviewLoading(false);
-    }
-  };
-
-  const handleComparisonPreview = async () => {
-    if (!selectedPlaylist || !userIntent || !selectedStyle) return;
-
-    setPreviewLoading(true);
-    try {
-      const response = await fetch('/api/preview-reorder-comparison', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          playlist_id: selectedPlaylist,
-          reorder_style: selectedStyle,
-          user_intent: userIntent,
-          personal_tone: personalTone,
-        }),
-        credentials: 'include',
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setComparisonData(data);
-        setStep('comparison');
-      } else {
-        const errorData = await response.json();
-        setErrorMessage(errorData.detail || 'Failed to generate comparison preview');
-      }
-    } catch (error) {
-      console.error('Error generating comparison preview:', error);
-      setErrorMessage('Failed to generate comparison preview');
     } finally {
       setPreviewLoading(false);
     }
@@ -435,9 +366,7 @@ const Dashboard: React.FC = () => {
               Back to Style
             </button>
             <ReorderStrategy 
-              onStrategySelected={handleStrategySelected} 
-              onPreviewChanges={handleComparisonPreview}
-              previewLoading={previewLoading}
+              onStrategySelected={handleStrategySelected}
             />
           </div>
         );
@@ -622,17 +551,6 @@ const Dashboard: React.FC = () => {
           </div>
         );
       
-      case 'settings':
-        return (
-          <div>
-            <button onClick={() => setStep('playlist')} className="flex items-center gap-2 mb-8 text-spotify-light hover:text-white transition-colors">
-              <ArrowLeft size={20} />
-              Back to Dashboard
-            </button>
-            <Settings onBack={() => setStep('playlist')} />
-          </div>
-        );
-      
       case 'preview':
         if (previewLoading) {
           return (
@@ -670,33 +588,6 @@ const Dashboard: React.FC = () => {
           />
         );
       
-      case 'comparison':
-        if (!comparisonData) {
-          return (
-            <div className="text-center py-12">
-              <p className="text-red-400">Failed to load comparison data</p>
-              <button 
-                onClick={() => setStep('strategy')}
-                className="mt-4 px-4 py-2 bg-spotify-green text-black rounded-lg"
-              >
-                Back to Strategy
-              </button>
-            </div>
-          );
-        }
-
-        return (
-          <BeforeAfterPreview 
-            data={comparisonData}
-            onApplyReorder={() => {
-              // Apply the reorder
-              setStep('reordering');
-              handleReorder();
-            }}
-            onBack={() => setStep('strategy')}
-          />
-        );
-      
       case 'manual-reorder':
         return (
           <RealTimePlaylistReorder 
@@ -724,18 +615,6 @@ const Dashboard: React.FC = () => {
 
   return (
     <>
-      {/* Onboarding Modal */}
-      {showOnboarding && (
-        <UserOnboarding
-          isVisible={showOnboarding}
-          onComplete={() => setShowOnboarding(false)}
-          onStartTutorial={() => {
-            setShowOnboarding(false);
-            setShowTutorial(true);
-          }}
-        />
-      )}
-
       {/* Interactive Tutorial */}
       {showTutorial && (
         <InteractiveTutorial
@@ -769,13 +648,6 @@ const Dashboard: React.FC = () => {
                 >
                   <History className="w-5 h-5" />
                   History
-                </button>
-                <button
-                  onClick={handleShowSettings}
-                  className="flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
-                >
-                  <SettingsIcon className="w-5 h-5" />
-                  Settings
                 </button>
               </div>
             </div>

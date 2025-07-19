@@ -32,16 +32,12 @@ class ProfileService:
             'spotify_country': None,
             'spotify_followers': 0,
             'spotify_product': None,
-            'subscription_tier': user.subscription_tier,
             'created_at': user.created_at.isoformat() if getattr(user, 'created_at', None) is not None else None,
             'profile_updated_at': None,
             'preferred_reorder_style': None,
             'favorite_styles': [],
             'user_preferences': {},
             'total_reorders': user.total_reorders,
-            'monthly_reorders_used': user.monthly_reorders_used,
-            'is_premium': user.is_premium(),
-            'onboarding_completed': user.has_completed_onboarding(),
         }
         
         # Add analytics
@@ -177,82 +173,6 @@ class ProfileService:
                 continue  # Skip jobs with date issues
         
         return monthly_data
-    
-    def update_user_preferences(self, user_id: str, preferences: Dict[str, Any]) -> Dict[str, Any]:
-        """Update user preferences (placeholder for now)"""
-        # This will be implemented when database migration is complete
-        return self.get_user_profile(user_id)
-    
-    def set_preferred_reorder_style(self, user_id: str, style: str) -> Dict[str, Any]:
-        """Set user's preferred reordering style (placeholder for now)"""
-        # This will be implemented when database migration is complete
-        return self.get_user_profile(user_id)
-    
-    def add_favorite_style(self, user_id: str, style: str) -> Dict[str, Any]:
-        """Add a style to user's favorites (placeholder for now)"""
-        # This will be implemented when database migration is complete
-        return self.get_user_profile(user_id)
-    
-    def remove_favorite_style(self, user_id: str, style: str) -> Dict[str, Any]:
-        """Remove a style from user's favorites (placeholder for now)"""
-        # This will be implemented when database migration is complete
-        return self.get_user_profile(user_id)
-    
-    def get_user_recommendations(self, user_id: str) -> Dict[str, Any]:
-        """Get personalized recommendations for the user"""
-        analytics = self.get_user_analytics(user_id)
-        
-        recommendations = {
-            'recommended_styles': [],
-            'tips': [],
-            'insights': []
-        }
-        
-        # Style recommendations based on usage
-        if analytics['most_used_style']:
-            similar_styles = self._get_similar_styles(analytics['most_used_style'])
-            recommendations['recommended_styles'] = similar_styles
-        
-        # Personalized tips
-        if analytics['success_rate'] < 80:
-            recommendations['tips'].append(
-                "Try using more specific intent descriptions for better results."
-            )
-        
-        if analytics['total_reorders'] > 10:
-            recommendations['tips'].append(
-                "Consider setting a preferred reordering style to speed up your workflow."
-            )
-        
-        # Insights
-        if analytics['total_tracks_reordered'] > 100:
-            recommendations['insights'].append(
-                f"You've reordered {analytics['total_tracks_reordered']} tracks! "
-                f"Your most efficient style is '{analytics['most_used_style']}'."
-            )
-        
-        if analytics['success_rate'] > 90:
-            recommendations['insights'].append(
-                f"Excellent! You have a {analytics['success_rate']}% success rate."
-            )
-        
-        return recommendations
-    
-    def _get_similar_styles(self, style: str) -> List[str]:
-        """Get styles similar to the given style"""
-        style_groups = {
-            'energy': ['energy', 'tempo', 'mood', 'vibe'],
-            'genre': ['genre', 'style', 'artist', 'similarity'],
-            'chronological': ['chronological', 'release_date', 'era', 'decade'],
-            'mood': ['mood', 'energy', 'vibe', 'emotion'],
-            'tempo': ['tempo', 'energy', 'bpm', 'rhythm'],
-        }
-        
-        for group, styles in style_groups.items():
-            if style in styles:
-                return [s for s in styles if s != style][:3]  # Return top 3 similar
-        
-        return ['energy', 'mood', 'genre']  # Default recommendations
     
     async def update_user_profile_from_spotify(self, user_id: str) -> Dict[str, Any]:
         """Update user profile with fresh data from Spotify API (placeholder)"""

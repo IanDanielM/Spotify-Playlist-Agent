@@ -223,12 +223,8 @@ async def get_profile(request: Request, db: Session = Depends(get_db)):
         "id": user.id,
         "spotify_username": user.spotify_username,
         "email": user.email,
-        "subscription_tier": user.subscription_tier,
-        "subscription_expires_at": user.subscription_expires_at.isoformat() if user.subscription_expires_at else None,
-        "monthly_reorders_used": user.monthly_reorders_used,
         "total_reorders": user.total_reorders,
-        "created_at": user.created_at.isoformat() if user.created_at else None,
-        "monthly_reset_date": user.monthly_reset_date.isoformat() if user.monthly_reset_date else None
+        "created_at": user.created_at.isoformat() if user.created_at else None
     }
 
 
@@ -244,16 +240,11 @@ async def get_usage(request: Request, db: Session = Depends(get_db)):
         raise fastapi.HTTPException(status_code=401, detail="Invalid session")
 
     user = session.user
-    can_reorder, message = user.can_reorder()
     
     return {
-        "subscription_tier": user.subscription_tier,
-        "monthly_reorders_used": user.monthly_reorders_used,
         "total_reorders": user.total_reorders,
-        "can_reorder": can_reorder,
-        "message": message,
-        "monthly_limit": 3 if user.subscription_tier == "free" else None,
-        "is_premium": user.is_premium()
+        "can_reorder": True,
+        "message": "Ready to reorder playlists"
     }
 
 

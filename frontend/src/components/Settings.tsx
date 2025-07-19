@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
 import UserProfileCard from './UserProfileCard';
-import UserAnalytics from './UserAnalytics';
-import UserPreferences from './UserPreferences';
-import { ArrowLeft, Settings as SettingsIcon, User, BarChart3, Heart } from 'lucide-react';
+import { ArrowLeft, Settings as SettingsIcon, User } from 'lucide-react';
 
 interface SettingsProps {
   onBack: () => void;
@@ -13,7 +11,6 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
 
   const tabs = [
     { id: 'profile', label: 'Profile', icon: User },
-    { id: 'preferences', label: 'Preferences', icon: Heart },
   ];
   const renderTabContent = () => {
     switch (activeTab) {
@@ -49,30 +46,9 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                   </div>
                 </div>
               </div>
-              
-              <div className="bg-gray-800/50 rounded-lg border border-gray-700 p-6">
-                <h3 className="text-lg font-semibold text-white mb-4">Subscription</h3>
-                
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-300">Current Plan</span>
-                    <span className="text-spotify-green font-semibold">Free</span>
-                  </div>
-                  
-                  <button className="w-full bg-spotify-green hover:bg-spotify-light text-black font-semibold py-2 px-4 rounded-lg transition-colors">
-                    Upgrade to Premium
-                  </button>
-                </div>
-              </div>
             </div>
           </div>
         );
-      
-      case 'analytics':
-        return <UserAnalytics />;
-      
-      case 'preferences':
-        return <UserPreferences />;
       
       default:
         return null;
