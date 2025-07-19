@@ -335,8 +335,8 @@ class SpotifyPlaylistOps:
             print(f"Failed to get user profile. Status code: {response.status_code}")
             return None
 
-    async def get_playlist_info(self, playlist_id):
-        """Get playlist information including snapshot_id for reordering"""
+    async def get_raw_playlist_data(self, playlist_id):
+        """Get raw playlist data directly from the API response"""
         headers = await self.get_headers()
         if not headers:
             return None
